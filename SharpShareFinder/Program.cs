@@ -544,54 +544,38 @@ namespace ShareFinder
                                     sharePermissions[shareKey] = new List<string>();
 
                                 AuthorizationRuleCollection rules = Directory.GetAccessControl(path).GetAccessRules(true, true, typeof(System.Security.Principal.SecurityIdentifier));
+                                
+                                var grantedRights = new HashSet<string>();
+                                
                                 foreach (FileSystemAccessRule rule in rules)
                                 {
-                                    if (rule.IdentityReference.ToString() == userSID || identity.Groups.Contains(rule.IdentityReference))
+                                    if (rule.AccessControlType == AccessControlType.Allow && 
+                                        (rule.IdentityReference.ToString() == userSID || identity.Groups.Contains(rule.IdentityReference)) )
                                     {
-                                        if (rule.AccessControlType == AccessControlType.Allow)
+
+                                        string rights = rule.FileSystemRights.ToString();
+
+                                        // https://learn.microsoft.com/en-us/archive/msdn-technet-forums/5211a077-63fc-4016-b750-25bf26b3ad15
+                                        if (rights == "268435456")
+                                            rights = "FullControl";
+                                        else if (rights == "-536805376")
+                                            rights = "Modify, Synchronize";
+                                        else if (rights == "-1610612736")
+                                            rights = "ReadAndExecute, Synchronize";
+
+                                        if (rights.Contains(","))
                                         {
-                                            // Check for read permissions
-                                            if ((rule.FileSystemRights.HasFlag(FileSystemRights.Read) ||
-                                                 rule.FileSystemRights.HasFlag(FileSystemRights.ReadData) ||
-                                                 rule.FileSystemRights.HasFlag(FileSystemRights.ReadAndExecute) ||
-                                                 rule.FileSystemRights.HasFlag(FileSystemRights.ListDirectory)) &&
-                                                !sharePermissions[shareKey].Contains("Read"))
+                                            foreach (string right in rights.Split(','))
                                             {
-                                                sharePermissions[shareKey].Add("Read");
+                                                grantedRights.Add(right.Trim());
                                             }
-
-                                            // Check for write permissions
-                                            if ((rule.FileSystemRights.HasFlag(FileSystemRights.Write) ||
-                                                 rule.FileSystemRights.HasFlag(FileSystemRights.WriteData) ||
-                                                 rule.FileSystemRights.HasFlag(FileSystemRights.CreateFiles) ||
-                                                 rule.FileSystemRights.HasFlag(FileSystemRights.CreateDirectories) ||
-                                                 rule.FileSystemRights.HasFlag(FileSystemRights.WriteAttributes) ||
-                                                 rule.FileSystemRights.HasFlag(FileSystemRights.WriteExtendedAttributes)) &&
-                                                !sharePermissions[shareKey].Contains("Write"))
-                                            {
-                                                sharePermissions[shareKey].Add("Write");
-                                            }
-
-                                            // Check for special permissions
-                                            if (rule.FileSystemRights.HasFlag(FileSystemRights.FullControl) &&
-                                                !sharePermissions[shareKey].Contains("FullControl"))
-                                            {
-                                                sharePermissions[shareKey].Add("FullControl");
-                                            }
-                                            else if (rule.FileSystemRights.HasFlag(FileSystemRights.Modify) &&
-                                                    !sharePermissions[shareKey].Contains("Modify"))
-                                            {
-                                                sharePermissions[shareKey].Add("Modify");
-                                            }
-
-                                            if (rule.FileSystemRights.HasFlag(FileSystemRights.Delete) &&
-                                                !sharePermissions[shareKey].Contains("Delete"))
-                                            {
-                                                sharePermissions[shareKey].Add("Delete");
-                                            }
+                                        } else
+                                        {
+                                            grantedRights.Add(rights);
                                         }
                                     }
                                 }
+                                sharePermissions[shareKey] = grantedRights.OrderBy(r => r).ToList();
                             }
                             catch
                             {
@@ -604,7 +588,7 @@ namespace ShareFinder
                     }
 
                     // Output all shares with their permissions (no duplicates; alphabetical permissions)
-                    foreach (var kvp in sharePermissions.OrderBy(x => x.Key))
+                    foreach (var kvp in sharePermissions)
                     {
                         if (kvp.Value.Count > 0)
                         {
