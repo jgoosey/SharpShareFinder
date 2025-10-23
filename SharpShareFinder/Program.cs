@@ -1,11 +1,15 @@
 ﻿using System;
 using System.Collections.Generic;
+using System.IO;
 using System.Linq;
+using System.Net;
 using System.Runtime.InteropServices;
+using System.Security.AccessControl;
+using System.Security.Principal;
 using System.Text;
 using System.Threading.Tasks;
 
-namespace SharpShareFinder
+namespace ShareFinder
 {
     internal class Program
     {
@@ -13,8 +17,8 @@ namespace SharpShareFinder
         [StructLayout(LayoutKind.Sequential)]
         public struct LDAP_TIMEVAL
         {
-            public int tv_sec; 
-            public int tv_usec; 
+            public int tv_sec;
+            public int tv_usec;
         }
 
         [StructLayout(LayoutKind.Sequential, CharSet = CharSet.Unicode)]
@@ -217,22 +221,22 @@ namespace SharpShareFinder
             }
         }
 
-        static void banner()
-        {
-            string banner = @"
-               _  _   _____ _                   ______ _           _           
-             _| || |_/  ___| |                  |  ___(_)         | |          
-            |_  __  _\ `--.| |__   __ _ _ __ ___| |_   _ _ __   __| | ___ _ __ 
-             _| || |_ `--. \ '_ \ / _` | '__/ _ \  _| | | '_ \ / _` |/ _ \ '__|
-            |_  __  _/\__/ / | | | (_| | | |  __/ |   | | | | | (_| |  __/ |   
-              |_||_| \____/|_| |_|\__,_|_|  \___\_|   |_|_| |_|\__,_|\___|_|   
-                                                                   
-            ";
-            Console.WriteLine(banner);
-            Console.WriteLine("\t\t\tby Mauricio Velazco (@mvelazco)");
-            Console.WriteLine("\n\n");
+        //static void banner()
+        //{
+        //    string banner = @"
+        //       _  _   _____ _                   ______ _           _           
+        //     _| || |_/  ___| |                  |  ___(_)         | |          
+        //    |_  __  _\ `--.| |__   __ _ _ __ ___| |_   _ _ __   __| | ___ _ __ 
+        //     _| || |_ `--. \ '_ \ / _` | '__/ _ \  _| | | '_ \ / _` |/ _ \ '__|
+        //    |_  __  _/\__/ / | | | (_| | | |  __/ |   | | | | | (_| |  __/ |   
+        //      |_||_| \____/|_| |_|\__,_|_|  \___\_|   |_|_| |_|\__,_|\___|_|   
 
-        }
+        //    ";
+        //    Console.WriteLine(banner);
+        //    Console.WriteLine("\t\t\tby Mauricio Velazco (@mvelazco)");
+        //    Console.WriteLine("\n\n");
+
+        //}
         //https://learn.microsoft.com/en-gb/previous-versions/windows/desktop/ldap/example-code-for-establishing-a-session-without-encryption
         static List<string> GetDnsHostNames()
         {
@@ -267,7 +271,7 @@ namespace SharpShareFinder
             }
 
             LDAP_TIMEVAL timeout;
-            timeout.tv_sec = 10; 
+            timeout.tv_sec = 10;
             timeout.tv_usec = 0;
 
             result = ldap_connect(ldap, ref timeout);
@@ -290,12 +294,40 @@ namespace SharpShareFinder
             string baseDn = ConvertDnsNameToDn(dc.DomainName);
             NetApiBufferFree(dcInfo);
 
-            string filter = "(objectCategory=computer)";
+            /*
+             From SharpShares:
+                case "all":
+                    description = "all enabled computers with \"primary\" group \"Domain Computers\"";
+                    filter = ("(&(objectCategory=computer)(!(userAccountControl:1.2.840.113556.1.4.803:=2)))");
+                    break;
+                case "dc":
+                    description = "all enabled Domain Controllers (not read-only DCs)";
+                    filter = ("(&(objectCategory=computer)(!(userAccountControl:1.2.840.113556.1.4.803:=2))(userAccountControl:1.2.840.113556.1.4.803:=8192))");
+                    break;
+                case "exclude-dc":
+                    description = "all enabled computers that are not Domain Controllers or read-only DCs";
+                    filter = ("(&(objectCategory=computer)(!(userAccountControl:1.2.840.113556.1.4.803:=2))(!(userAccountControl:1.2.840.113556.1.4.803:=8192))(!(userAccountControl:1.2.840.113556.1.4.803:=67100867)))");
+                    break;
+                case "servers":
+                    searchGlobalCatalog = false; //operatingSystem attribute is not replicated in Global Catalog
+                    description = "all enabled servers";
+                    filter = ("(&(objectCategory=computer)(!(userAccountControl:1.2.840.113556.1.4.803:=2))(operatingSystem=*server*))");
+                    break;
+                case "servers-exclude-dc":
+                    searchGlobalCatalog = false; //operatingSystem attribute is not replicated in Global Catalog
+                    description = "all enabled servers excluding Domain Controllers or read-only DCs";
+                    filter = ("(&(objectCategory=computer)(!(userAccountControl:1.2.840.113556.1.4.803:=2))(operatingSystem=*server*)(!(userAccountControl:1.2.840.113556.1.4.803:=8192))(!(userAccountControl:1.2.840.113556.1.4.803:=67100867)))");
+                    break;
+            */
+
+
+            //string filter = "(&(objectCategory=computer)(!(userAccountControl:1.2.840.113556.1.4.803:=2)))";
+            string filter = "(&(objectCategory=computer)(!(userAccountControl:1.2.840.113556.1.4.803:=2))(operatingSystem=*server*))";
 
             //DateTime lastHour = DateTime.UtcNow.AddHours(-1);
             //long lastHourFileTime = lastHour.ToFileTime();
             //string filter = $"(&(objectCategory=computer)(lastLogonTimestamp>={lastHourFileTime}))";
-            
+
 
 
             // TODO: implementing paged searching will be needed in large environments.
@@ -344,10 +376,10 @@ namespace SharpShareFinder
             */
 
 
-            
+
             string[] attrs = new string[] { "dNSHostName", null };
-            int maxResults = 100;
-            Console.WriteLine($"[+] Running LDAP query to obtain domain computers...");
+            //int maxResults = 100;
+            //Console.WriteLine($"[+] Running LDAP query to obtain domain computers...");
             res = IntPtr.Zero;
             result = ldap_search_st(ldap, baseDn, 2, filter, attrs, 0, IntPtr.Zero, ref res);
             //result = ldap_search_st(ldap, baseDn, 2, filter, attrs, 0, ref timeout, ref res, maxResults);
@@ -374,39 +406,212 @@ namespace SharpShareFinder
                         if (valuePtr == IntPtr.Zero) break;
 
                         LDAP_BERVAL valueBerVal = Marshal.PtrToStructure<LDAP_BERVAL>(valuePtr);
-                        byte[] valueBytes = new byte[valueBerVal.bv_len]; 
-                        Marshal.Copy(valueBerVal.bv_val, valueBytes, 0, valueBytes.Length); 
+                        byte[] valueBytes = new byte[valueBerVal.bv_len];
+                        Marshal.Copy(valueBerVal.bv_val, valueBytes, 0, valueBytes.Length);
 
                         string dnsHostname = Encoding.UTF8.GetString(valueBytes);
                         dnshostnames.Add(dnsHostname);
-                        currentPtr += IntPtr.Size; 
+                        currentPtr += IntPtr.Size;
                     }
                     ldap_value_free_len(dnshostnamePtr);
                 }
                 results = ldap_next_entry(ldap, results);
             }
-            
+
             return dnshostnames;
         }
 
+        //static void Main(string[] args)
+        //{
+        //    //banner();
+
+        //    List<string> dnsHostNames = GetDnsHostNames();
+        //    Parallel.ForEach(dnsHostNames, dnsHostName =>
+        //    {
+
+
+
+        //        string[] errors = { "ERROR=53", "ERROR=5" };
+        //        SHARE_INFO_1[] shares = EnumNetShares(dnsHostName);
+        //        //Console.WriteLine($"[+] Identified network shares on: {dnsHostName}");
+        //        if (shares.Length > 0)
+        //        {
+        //            List<string> readableShares = new List<string>();
+        //            List<string> writeableShares = new List<string>();
+        //            List<string> unauthorizedShares = new List<string>();
+
+        //            // get current user's identity to compare against ACL of shares
+        //            WindowsIdentity identity = WindowsIdentity.GetCurrent();
+        //            string userSID = identity.User.Value;
+
+        //            foreach (SHARE_INFO_1 share in shares)
+        //            {
+        //                string sharename = share.shi1_netname;
+        //                string[] excluded_shares = { "IPC$", "ADMIN$", "C$", "SYSVOL", "NETLOGON", "PRINT$" };
+        //                if (!excluded_shares.Contains(sharename.ToString().ToUpper()) && !errors.Contains(sharename))
+        //                {
+        //                    try
+        //                    {
+        //                        //Console.WriteLine($"\\\\{dnsHostName}\\{sharename}");
+        //                        string path = String.Format("\\\\{0}\\{1}", dnsHostName, sharename);
+
+        //                        readableShares.Add(sharename);
+
+        //                        List<string> rights = new List<string>();
+        //                        AuthorizationRuleCollection rules = Directory.GetAccessControl(path).GetAccessRules(true, true, typeof(System.Security.Principal.SecurityIdentifier));
+        //                        foreach (FileSystemAccessRule rule in rules)
+        //                        {
+        //                            if (rule.IdentityReference.ToString() == userSID || identity.Groups.Contains(rule.IdentityReference))
+        //                            {
+        //                                /*
+        //                                 https://learn.microsoft.com/en-us/dotnet/api/system.security.accesscontrol.filesystemrights?view=net-9.0 
+
+        //                                 Other rules from SharpShares:
+        //                                    rule.FileSystemRights.HasFlag(FileSystemRights.CreateFiles) ||
+        //                                    rule.FileSystemRights.HasFlag(FileSystemRights.WriteAttributes) ||
+        //                                    rule.FileSystemRights.HasFlag(FileSystemRights.WriteData) ||
+        //                                    rule.FileSystemRights.HasFlag(FileSystemRights.WriteExtendedAttributes) ||
+        //                                    rule.FileSystemRights.HasFlag(FileSystemRights.CreateDirectories) ||
+        //                                 */
+
+        //                                if (rule.FileSystemRights.HasFlag(FileSystemRights.Write) && rule.AccessControlType == AccessControlType.Allow)
+        //                                {
+        //                                    writeableShares.Add(sharename);
+        //                                    break;
+        //                                }
+
+        //                            }
+        //                        }
+        //                    }
+        //                    catch
+        //                    {
+        //                        unauthorizedShares.Add(sharename);
+        //                    }
+        //                }
+
+        //            }
+        //            if (readableShares.Count > 0)
+        //            {
+        //                //Console.WriteLine("=== Readable Shares ===");
+        //                foreach (string sharename in readableShares)
+        //                {
+        //                    Console.WriteLine("Read, \\\\{0}\\{1}", dnsHostName, sharename);
+        //                }
+        //            }
+        //            if (writeableShares.Count > 0)
+        //            {
+        //                //Console.WriteLine("=== Writable Shares ===");
+        //                foreach (string sharename in writeableShares)
+        //                {
+        //                    Console.WriteLine("Write, \\\\{0}\\{1}", dnsHostName, sharename);
+        //                }
+        //            }
+        //        }
+
+
+        //    });
+        //}
+
         static void Main(string[] args)
         {
-            banner();
-
             List<string> dnsHostNames = GetDnsHostNames();
             Parallel.ForEach(dnsHostNames, dnsHostName =>
             {
+                string[] errors = { "ERROR=53", "ERROR=5" };
                 SHARE_INFO_1[] shares = EnumNetShares(dnsHostName);
-                Console.WriteLine($"[+] Identified network shares on: {dnsHostName}");
-                foreach (SHARE_INFO_1 share in shares)
+
+                if (shares.Length > 0)
                 {
-                    String sharename = share.ToString();
-                    string[] excluded_shares = { "IPC$", "ADMIN$", "C$", "SYSVOL", "NETLOGON" };
-                    if (!excluded_shares.Contains(sharename))
+                    // Use a dictionary to store unique shares and their permissions
+                    Dictionary<string, List<string>> sharePermissions = new Dictionary<string, List<string>>();
+
+                    // get current user's identity to compare against ACL of shares
+                    WindowsIdentity identity = WindowsIdentity.GetCurrent();
+                    string userSID = identity.User.Value;
+
+                    foreach (SHARE_INFO_1 share in shares)
                     {
-                        Console.WriteLine($"\t\\\\{dnsHostName}\\{sharename}");
+                        string sharename = share.shi1_netname;
+                        string[] excluded_shares = { "IPC$", "ADMIN$", "C$", "SYSVOL", "NETLOGON", "PRINT$" };
+                        if (!excluded_shares.Contains(sharename.ToString().ToUpper()) && !errors.Contains(sharename))
+                        {
+                            try
+                            {
+                                string path = String.Format("\\\\{0}\\{1}", dnsHostName, sharename);
+                                string shareKey = $"\\\\{dnsHostName}\\{sharename}";
+
+                                if (!sharePermissions.ContainsKey(shareKey))
+                                    sharePermissions[shareKey] = new List<string>();
+
+                                AuthorizationRuleCollection rules = Directory.GetAccessControl(path).GetAccessRules(true, true, typeof(System.Security.Principal.SecurityIdentifier));
+                                foreach (FileSystemAccessRule rule in rules)
+                                {
+                                    if (rule.IdentityReference.ToString() == userSID || identity.Groups.Contains(rule.IdentityReference))
+                                    {
+                                        if (rule.AccessControlType == AccessControlType.Allow)
+                                        {
+                                            // Check for read permissions
+                                            if ((rule.FileSystemRights.HasFlag(FileSystemRights.Read) ||
+                                                 rule.FileSystemRights.HasFlag(FileSystemRights.ReadData) ||
+                                                 rule.FileSystemRights.HasFlag(FileSystemRights.ReadAndExecute) ||
+                                                 rule.FileSystemRights.HasFlag(FileSystemRights.ListDirectory)) &&
+                                                !sharePermissions[shareKey].Contains("Read"))
+                                            {
+                                                sharePermissions[shareKey].Add("Read");
+                                            }
+
+                                            // Check for write permissions
+                                            if ((rule.FileSystemRights.HasFlag(FileSystemRights.Write) ||
+                                                 rule.FileSystemRights.HasFlag(FileSystemRights.WriteData) ||
+                                                 rule.FileSystemRights.HasFlag(FileSystemRights.CreateFiles) ||
+                                                 rule.FileSystemRights.HasFlag(FileSystemRights.CreateDirectories) ||
+                                                 rule.FileSystemRights.HasFlag(FileSystemRights.WriteAttributes) ||
+                                                 rule.FileSystemRights.HasFlag(FileSystemRights.WriteExtendedAttributes)) &&
+                                                !sharePermissions[shareKey].Contains("Write"))
+                                            {
+                                                sharePermissions[shareKey].Add("Write");
+                                            }
+
+                                            // Check for special permissions
+                                            if (rule.FileSystemRights.HasFlag(FileSystemRights.FullControl) &&
+                                                !sharePermissions[shareKey].Contains("FullControl"))
+                                            {
+                                                sharePermissions[shareKey].Add("FullControl");
+                                            }
+                                            else if (rule.FileSystemRights.HasFlag(FileSystemRights.Modify) &&
+                                                    !sharePermissions[shareKey].Contains("Modify"))
+                                            {
+                                                sharePermissions[shareKey].Add("Modify");
+                                            }
+
+                                            if (rule.FileSystemRights.HasFlag(FileSystemRights.Delete) &&
+                                                !sharePermissions[shareKey].Contains("Delete"))
+                                            {
+                                                sharePermissions[shareKey].Add("Delete");
+                                            }
+                                        }
+                                    }
+                                }
+                            }
+                            catch
+                            {
+                                // Handle unauthorized access
+                                string shareKey = $"\\\\{dnsHostName}\\{sharename}";
+                                if (!sharePermissions.ContainsKey(shareKey))
+                                    sharePermissions[shareKey] = new List<string> { "Unauthorized" };
+                            }
+                        }
                     }
 
+                    // Output all shares with their permissions (no duplicates)
+                    foreach (var kvp in sharePermissions)
+                    {
+                        if (kvp.Value.Count > 0)
+                        {
+                            string permissionsString = string.Join(", ", kvp.Value);
+                            Console.WriteLine($"{kvp.Key} ({permissionsString})");
+                        }
+                    }
                 }
             });
         }
