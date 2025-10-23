@@ -650,12 +650,14 @@ namespace ShareFinder
             Console.WriteLine("Usage: ShareFinder.exe [OPTION]");
             Console.WriteLine("");
             Console.WriteLine("Options:");
-            Console.WriteLine("  local      Search local system folders");
-            Console.WriteLine("  network    Search network shares");
-            Console.WriteLine("  help       Show this help message");
+            Console.WriteLine("  local              Search local system folders");
+            Console.WriteLine("  local [directory]  Search local system folders");
+            Console.WriteLine("  network            Search network shares");
+            Console.WriteLine("  help               Show this help message");
             Console.WriteLine("");
             Console.WriteLine("Examples:");
             Console.WriteLine("  ShareFinder.exe local");
+            Console.WriteLine("  ShareFinder.exe local C:\\Users");
             Console.WriteLine("  ShareFinder.exe network");
         }
 
