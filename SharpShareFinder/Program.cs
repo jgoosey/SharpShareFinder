@@ -603,8 +603,8 @@ namespace ShareFinder
                         }
                     }
 
-                    // Output all shares with their permissions (no duplicates)
-                    foreach (var kvp in sharePermissions)
+                    // Output all shares with their permissions (no duplicates; alphabetical permissions)
+                    foreach (var kvp in sharePermissions.OrderBy(x => x.Key))
                     {
                         if (kvp.Value.Count > 0)
                         {
