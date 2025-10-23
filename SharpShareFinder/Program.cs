@@ -424,7 +424,7 @@ namespace ShareFinder
         }
 
 
-        static void GetLocal()
+        static void GetLocal(string customPath = null)
         {
             Console.WriteLine("[+] Enumerating local folders...");
             WindowsIdentity identity = WindowsIdentity.GetCurrent();
@@ -433,39 +433,54 @@ namespace ShareFinder
             // Dictionary to store unique folders and their permissions
             Dictionary<string, List<string>> folderPermissions = new Dictionary<string, List<string>>();
 
-            // Define interesting local paths to check (just using known AppLocker bypass for now)
-            // https://juggernaut-sec.com/applocker-bypass/
-            List<string> localPaths = new List<string>
+            List<string> localPaths;
+            if (!string.IsNullOrEmpty(customPath))
             {
-                @"C:\Windows\Tasks",
-                @"C:\Windows\Temp",
-                @"C:\windows\tracing",
-                @"C:\Windows\Registration\CRMLog",
-                @"C:\Windows\System32\FxsTmp",
-                @"C:\Windows\System32\com\dmp",
-                @"C:\Windows\System32\Microsoft\Crypto\RSA\MachineKeys",
-                @"C:\Windows\System32\spool\PRINTERS",
-                @"C:\Windows\System32\spool\SERVERS",
-                @"C:\Windows\System32\spool\drivers\color",
-                @"C:\Windows\System32\Tasks\Microsoft\Windows\SyncCenter",
-                @"C:\Windows\SysWOW64\FxsTmp",
-                @"C:\Windows\SysWOW64\com\dmp",
-                @"C:\Windows\SysWOW64\Tasks\Microsoft\Windows\SyncCenter",
-                @"C:\Windows\SysWOW64\Tasks\Microsoft\Windows\PLA\System"
-            };
+                localPaths = new List<string> { customPath };
+                try
+                {
+                    if (Directory.Exists(customPath))
+                    {
+                        localPaths.AddRange(Directory.GetDirectories(customPath));
+                    }
+                }
+                catch { }
+            } else {
+                // Define interesting local paths to check (just using known AppLocker bypass for now)
+                // https://juggernaut-sec.com/applocker-bypass/
 
-            // Add user directories
-            //try
-            //{
-            //    foreach (string userDir in Directory.GetDirectories(@"C:\Users"))
-            //    {
-            //        localPaths.Add(userDir);
-            //        localPaths.Add(Path.Combine(userDir, "Desktop"));
-            //        localPaths.Add(Path.Combine(userDir, "Documents"));
-            //        localPaths.Add(Path.Combine(userDir, "Downloads"));
-            //    }
-            //}
-            //catch { }
+                localPaths = new List<string>
+                {
+                    @"C:\Windows\Tasks",
+                    @"C:\Windows\Temp",
+                    @"C:\windows\tracing",
+                    @"C:\Windows\Registration\CRMLog",
+                    @"C:\Windows\System32\FxsTmp",
+                    @"C:\Windows\System32\com\dmp",
+                    @"C:\Windows\System32\Microsoft\Crypto\RSA\MachineKeys",
+                    @"C:\Windows\System32\spool\PRINTERS",
+                    @"C:\Windows\System32\spool\SERVERS",
+                    @"C:\Windows\System32\spool\drivers\color",
+                    @"C:\Windows\System32\Tasks\Microsoft\Windows\SyncCenter",
+                    @"C:\Windows\SysWOW64\FxsTmp",
+                    @"C:\Windows\SysWOW64\com\dmp",
+                    @"C:\Windows\SysWOW64\Tasks\Microsoft\Windows\SyncCenter",
+                    @"C:\Windows\SysWOW64\Tasks\Microsoft\Windows\PLA\System"
+                };
+
+                // Add user directories
+                //try
+                //{
+                //    foreach (string userDir in Directory.GetDirectories(@"C:\Users"))
+                //    {
+                //        localPaths.Add(userDir);
+                //        localPaths.Add(Path.Combine(userDir, "Desktop"));
+                //        localPaths.Add(Path.Combine(userDir, "Documents"));
+                //        localPaths.Add(Path.Combine(userDir, "Downloads"));
+                //    }
+                //}
+                //catch { }
+            }
 
             foreach (string localPath in localPaths)
             {
@@ -658,7 +673,13 @@ namespace ShareFinder
             {
                 case "local":
                 case "l":
-                    GetLocal();
+                    if (args.Length > 1)
+                    {
+                        GetLocal(args[1]);
+                    } else
+                    {
+                        GetLocal();
+                    }
                     break;
                 case "network":
                 case "n":
