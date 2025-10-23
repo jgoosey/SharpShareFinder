@@ -3,8 +3,10 @@ using System.Collections.Generic;
 using System.IO;
 using System.Linq;
 using System.Net;
+using System.Reflection;
 using System.Runtime.InteropServices;
 using System.Security.AccessControl;
+using System.Security.Cryptography;
 using System.Security.Principal;
 using System.Text;
 using System.Threading.Tasks;
@@ -321,8 +323,8 @@ namespace ShareFinder
             */
 
 
-            //string filter = "(&(objectCategory=computer)(!(userAccountControl:1.2.840.113556.1.4.803:=2)))";
-            string filter = "(&(objectCategory=computer)(!(userAccountControl:1.2.840.113556.1.4.803:=2))(operatingSystem=*server*))";
+            string filter = "(&(objectCategory=computer)(!(userAccountControl:1.2.840.113556.1.4.803:=2)))";
+            //string filter = "(&(objectCategory=computer)(!(userAccountControl:1.2.840.113556.1.4.803:=2))(operatingSystem=*server*))";
 
             //DateTime lastHour = DateTime.UtcNow.AddHours(-1);
             //long lastHourFileTime = lastHour.ToFileTime();
@@ -421,8 +423,127 @@ namespace ShareFinder
             return dnshostnames;
         }
 
-        static void Main(string[] args)
+
+        static void GetLocal()
         {
+            Console.WriteLine("[+] Enumerating local folders...");
+            WindowsIdentity identity = WindowsIdentity.GetCurrent();
+            string userSID = identity.User.Value;
+
+            // Dictionary to store unique folders and their permissions
+            Dictionary<string, List<string>> folderPermissions = new Dictionary<string, List<string>>();
+
+            // Define interesting local paths to check (just using known AppLocker bypass for now)
+            // https://juggernaut-sec.com/applocker-bypass/
+            List<string> localPaths = new List<string>
+            {
+                @"C:\Windows\Tasks",
+                @"C:\Windows\Temp",
+                @"C:\windows\tracing",
+                @"C:\Windows\Registration\CRMLog",
+                @"C:\Windows\System32\FxsTmp",
+                @"C:\Windows\System32\com\dmp",
+                @"C:\Windows\System32\Microsoft\Crypto\RSA\MachineKeys",
+                @"C:\Windows\System32\spool\PRINTERS",
+                @"C:\Windows\System32\spool\SERVERS",
+                @"C:\Windows\System32\spool\drivers\color",
+                @"C:\Windows\System32\Tasks\Microsoft\Windows\SyncCenter",
+                @"C:\Windows\SysWOW64\FxsTmp",
+                @"C:\Windows\SysWOW64\com\dmp",
+                @"C:\Windows\SysWOW64\Tasks\Microsoft\Windows\SyncCenter",
+                @"C:\Windows\SysWOW64\Tasks\Microsoft\Windows\PLA\System"
+            };
+
+            // Add user directories
+            //try
+            //{
+            //    foreach (string userDir in Directory.GetDirectories(@"C:\Users"))
+            //    {
+            //        localPaths.Add(userDir);
+            //        localPaths.Add(Path.Combine(userDir, "Desktop"));
+            //        localPaths.Add(Path.Combine(userDir, "Documents"));
+            //        localPaths.Add(Path.Combine(userDir, "Downloads"));
+            //    }
+            //}
+            //catch { }
+
+            foreach (string localPath in localPaths)
+            {
+                try
+                {
+                    if (Directory.Exists(localPath))
+                    {
+                        if (!folderPermissions.ContainsKey(localPath))
+                            folderPermissions[localPath] = new List<string>();
+
+                        AuthorizationRuleCollection rules = Directory.GetAccessControl(localPath).GetAccessRules(true, true, typeof(System.Security.Principal.SecurityIdentifier));
+
+                        var grantedRights = new HashSet<string>();
+
+                        foreach (FileSystemAccessRule rule in rules)
+                        {
+                            if (rule.AccessControlType == AccessControlType.Allow &&
+                                (rule.IdentityReference.ToString() == userSID || identity.Groups.Contains(rule.IdentityReference)))
+                            {
+                                string rightsString = rule.FileSystemRights.ToString();
+
+                                // https://learn.microsoft.com/en-us/archive/msdn-technet-forums/5211a077-63fc-4016-b750-25bf26b3ad15
+                                if (rightsString == "268435456")
+                                    rightsString = "FullControl";
+                                else if (rightsString == "-536805376")
+                                    rightsString = "Modify, Synchronize";
+                                else if (rightsString == "-1610612736")
+                                    rightsString = "ReadAndExecute, Synchronize";
+
+                                // Process the rights
+                                if (rightsString.Contains(","))
+                                {
+                                    foreach (string right in rightsString.Split(','))
+                                    {
+                                        string trimmedRight = right.Trim();
+                                        if (!int.TryParse(trimmedRight, out _)) // Skip remaining numerical values
+                                        {
+                                            grantedRights.Add(trimmedRight);
+                                        }
+                                    }
+                                }
+                                else
+                                {
+                                    if (!int.TryParse(rightsString, out _)) // Skip numerical values
+                                    {
+                                        grantedRights.Add(rightsString);
+                                    }
+                                }
+                            }
+                        }
+
+                        if (grantedRights.Count > 0)
+                        {
+                            folderPermissions[localPath] = grantedRights.OrderBy(r => r).ToList();
+                        }
+                    }
+                }
+                catch
+                {
+                    // Skip anything we can't access
+                }
+            }
+
+            // Output all folders with their permissions
+            foreach (var kvp in folderPermissions)
+            {
+                if (kvp.Value.Count > 0)
+                {
+                    string permissionsString = string.Join(", ", kvp.Value);
+                    Console.WriteLine($"{kvp.Key} ({permissionsString})");
+                }
+            }
+        }
+
+        static void GetNetwork()
+        {
+            Console.WriteLine("[+] Enumerating network shares...");
+
             List<string> dnsHostNames = GetDnsHostNames();
             Parallel.ForEach(dnsHostNames, dnsHostName =>
             {
@@ -453,13 +574,13 @@ namespace ShareFinder
                                     sharePermissions[shareKey] = new List<string>();
 
                                 AuthorizationRuleCollection rules = Directory.GetAccessControl(path).GetAccessRules(true, true, typeof(System.Security.Principal.SecurityIdentifier));
-                                
+
                                 var grantedRights = new HashSet<string>();
-                                
+
                                 foreach (FileSystemAccessRule rule in rules)
                                 {
-                                    if (rule.AccessControlType == AccessControlType.Allow && 
-                                        (rule.IdentityReference.ToString() == userSID || identity.Groups.Contains(rule.IdentityReference)) )
+                                    if (rule.AccessControlType == AccessControlType.Allow &&
+                                        (rule.IdentityReference.ToString() == userSID || identity.Groups.Contains(rule.IdentityReference)))
                                     {
 
                                         string rights = rule.FileSystemRights.ToString();
@@ -478,7 +599,8 @@ namespace ShareFinder
                                             {
                                                 grantedRights.Add(right.Trim());
                                             }
-                                        } else
+                                        }
+                                        else
                                         {
                                             grantedRights.Add(rights);
                                         }
@@ -488,10 +610,7 @@ namespace ShareFinder
                             }
                             catch
                             {
-                                // Handle unauthorized access
-                                string shareKey = $"\\\\{dnsHostName}\\{sharename}";
-                                if (!sharePermissions.ContainsKey(shareKey))
-                                    sharePermissions[shareKey] = new List<string> { "Unauthorized" };
+                                // Skip anything we can't access
                             }
                         }
                     }
@@ -507,6 +626,54 @@ namespace ShareFinder
                     }
                 }
             });
+        }
+
+        static void ShowHelp()
+        {
+            Console.WriteLine("ShareFinder - Network Share and Local Folder Permission Enumerator");
+            Console.WriteLine("");
+            Console.WriteLine("Usage: ShareFinder.exe [OPTION]");
+            Console.WriteLine("");
+            Console.WriteLine("Options:");
+            Console.WriteLine("  local      Search local system folders");
+            Console.WriteLine("  network    Search network shares");
+            Console.WriteLine("  help       Show this help message");
+            Console.WriteLine("");
+            Console.WriteLine("Examples:");
+            Console.WriteLine("  ShareFinder.exe local");
+            Console.WriteLine("  ShareFinder.exe network");
+        }
+
+        static void Main(string[] args)
+        {
+            if (args.Length == 0)
+            {
+                ShowHelp();
+                return;
+            }
+
+            string argument = args[0].ToLower();
+
+            switch (argument)
+            {
+                case "local":
+                case "l":
+                    GetLocal();
+                    break;
+                case "network":
+                case "n":
+                    GetNetwork();
+                    break;
+                case "help":
+                case "h":
+                    ShowHelp();
+                    break;
+                default:
+                    Console.WriteLine($"Unknown option: {args[0]}");
+                    Console.WriteLine("");
+                    ShowHelp();
+                    break;
+            }
         }
     }
 }
